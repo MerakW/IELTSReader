@@ -6,6 +6,12 @@ GitHub: https://github.com/MerakW/IELTSReader
 
 下载：<https://github.com/MerakW/IELTSReader/releases/latest>
 
+## 系统要求
+
+- macOS 13.0 或更新版本
+- 当前 Release 预构建版本面向 Apple Silicon，也就是 M 系列芯片 Mac
+- Intel Mac 暂未提供预构建安装包；源码本身未刻意限制 Intel，但需要在 Intel Mac 上自行构建或之后提供 Universal / Intel 版本
+
 ## 功能
 
 - 📄 导入本地 PDF
@@ -22,7 +28,7 @@ GitHub: https://github.com/MerakW/IELTSReader
 
 ## 使用
 
-请前往 [Releases](https://github.com/MerakW/IELTSReader/releases/latest) 下载最新版本的 `IELTSReader-1.0.dmg`。
+请前往 [Releases](https://github.com/MerakW/IELTSReader/releases/latest) 下载最新版本的 Apple Silicon 安装包。
 
 下载后打开 DMG，将 `IELTSReader.app` 拖入 `Applications` 文件夹即可使用。
 
