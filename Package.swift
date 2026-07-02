@@ -11,6 +11,11 @@ let package = Package(
         .executable(name: "IELTSReader", targets: ["IELTSReader"])
     ],
     targets: [
-        .executableTarget(name: "IELTSReader")
+        .executableTarget(
+            name: "IELTSReader",
+            swiftSettings: [
+                .unsafeFlags(["-parse-as-library"])
+            ]
+        )
     ]
 )

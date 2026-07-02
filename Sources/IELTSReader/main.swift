@@ -3,7 +3,9 @@ import PDFKit
 import UniformTypeIdentifiers
 import ImageIO
 
-private let projectURL = URL(string: "https://github.com/MerakW/IELTSReader")!
+enum AppConstants {
+    static let projectURL = URL(string: "https://github.com/MerakW/IELTSReader")!
+}
 
 @main
 struct IELTSReaderApp: App {
@@ -39,7 +41,7 @@ struct IELTSReaderApp: App {
                     AppInfoPresenter.showHelp()
                 }
                 Button("GitHub Repository") {
-                    NSWorkspace.shared.open(projectURL)
+                    NSWorkspace.shared.open(AppConstants.projectURL)
                 }
             }
         }
@@ -71,12 +73,12 @@ enum AppInfoPresenter {
         Copyright © 2026 Merak
 
         GitHub:
-        \(projectURL.absoluteString)
+        \(AppConstants.projectURL.absoluteString)
         """
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Open GitHub")
         if alert.runModal() == .alertSecondButtonReturn {
-            NSWorkspace.shared.open(projectURL)
+            NSWorkspace.shared.open(AppConstants.projectURL)
         }
     }
 
@@ -102,7 +104,7 @@ enum AppInfoPresenter {
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Open GitHub")
         if alert.runModal() == .alertSecondButtonReturn {
-            NSWorkspace.shared.open(projectURL)
+            NSWorkspace.shared.open(AppConstants.projectURL)
         }
     }
 }
