@@ -4,6 +4,8 @@
 
 GitHub: https://github.com/MerakW/IELTSReader
 
+下载：<https://github.com/MerakW/IELTSReader/releases/latest>
+
 ## 功能
 
 - 📄 导入本地 PDF
@@ -20,10 +22,17 @@ GitHub: https://github.com/MerakW/IELTSReader
 
 ## 使用
 
+请前往 [Releases](https://github.com/MerakW/IELTSReader/releases/latest) 下载最新版本的 `IELTSReader-1.0.dmg`。
+
+下载后打开 DMG，将 `IELTSReader.app` 拖入 `Applications` 文件夹即可使用。
+
+如果 macOS 提示 App 已损坏，可以先确认文件来自本项目 Release，然后在终端运行：
+
 ```sh
-./make_app.sh
-open .build/IELTSReader.app
+sudo xattr -rd com.apple.quarantine /Applications/IELTSReader.app
 ```
+
+DMG 中也包含 `Damaged App Help.txt` 和 `Fix Damaged App.command`，可以按其中说明处理。
 
 ## 基本流程
 
