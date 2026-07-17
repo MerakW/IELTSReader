@@ -1,10 +1,10 @@
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
-import ImageIO
 
 enum AppConstants {
     static let projectURL = URL(string: "https://github.com/MerakW/IELTSReader")!
+    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.5.0"
 }
 
 @main
@@ -14,8 +14,9 @@ struct IELTSReaderApp: App {
     var body: some Scene {
         WindowGroup {
             PracticeView()
-                .frame(minWidth: 1180, minHeight: 760)
+                .frame(minWidth: 1000, minHeight: 680)
         }
+        .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About IELTSReader") {
@@ -61,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidResignActive(_ notification: Notification) {
         StrictModeController.shared.refocusIfNeeded()
     }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        StrictModeController.shared.refocusIfNeeded()
+    }
 }
 
 enum AppInfoPresenter {
@@ -69,6 +74,8 @@ enum AppInfoPresenter {
         alert.messageText = "IELTSReader"
         alert.informativeText = """
         A native macOS reader for IELTS practice PDFs.
+
+        Version \(AppConstants.version)
 
         Copyright © 2026 Merak
 
@@ -99,7 +106,7 @@ enum AppInfoPresenter {
         Strict Mode enters full screen and keeps the app focused. Unlocking, closing the window, or quitting asks for confirmation.
 
         Export and sessions:
-        Export answers as text or image, or save a session to continue later.
+        Copy answers as text. Export opens a preview before saving a PNG, or save a session to continue later.
         """
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Open GitHub")
@@ -131,46 +138,51 @@ struct PracticeView: View {
     @State private var isStrictModeEnabled = false
     @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
-    private var pageCount: Int {
-        document?.pageCount ?? 1
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            toolbar
+        ZStack(alignment: .bottomLeading) {
+            if let document {
+                VStack(spacing: 0) {
+                    WorkspaceHeader(
+                        title: $practiceTitle,
+                        fileName: pdfURL?.lastPathComponent ?? "Untitled PDF",
+                        pageCount: document.pageCount,
+                        answeredCount: answers.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count,
+                        questionCount: answers.count
+                    )
 
-            ZStack(alignment: .bottomLeading) {
-                if let document {
                     HSplitView {
                         PDFPane(
                             title: "Passage",
+                            systemImage: "text.book.closed",
                             document: document,
                             startPage: $passageStart,
                             endPage: $passageEnd,
                             selectedTool: $selectedTool
                         )
-                        .frame(minWidth: 420)
+                        .frame(minWidth: 360)
 
                         PDFPane(
                             title: "Questions",
+                            systemImage: "list.number",
                             document: document,
                             startPage: $questionStart,
                             endPage: $questionEnd,
                             selectedTool: $selectedTool
                         )
-                        .frame(minWidth: 360)
+                        .frame(minWidth: 340)
 
                         AnswerPanel(answers: $answers)
                             .environment(\.practiceTitle, practiceTitle)
-                            .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+                            .frame(minWidth: 290, idealWidth: 350, maxWidth: 460)
                     }
-                } else {
-                    EmptyStateView(importAction: importPDF)
                 }
-
-                CreditView()
+            } else {
+                EmptyStateView(importAction: importPDF, loadAction: loadSession)
             }
+
+            CreditView()
         }
+        .toolbar { appToolbar }
         .background(WindowBinder(title: windowTitle))
         .onReceive(NotificationCenter.default.publisher(for: .importPDFRequested)) { _ in
             importPDF()
@@ -188,71 +200,56 @@ struct PracticeView: View {
         }
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 10) {
+    @ToolbarContentBuilder
+    private var appToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
             Button(action: importPDF) {
-                Label("Import", systemImage: "doc.badge.plus")
+                Label("Import PDF", systemImage: "doc.badge.plus")
             }
-            Button(action: saveSession) {
-                Label("Save", systemImage: "square.and.arrow.down")
-            }
-            .disabled(document == nil)
-            Button(action: loadSession) {
-                Label("Load", systemImage: "square.and.arrow.up")
-            }
+            .help("Import a practice PDF")
 
-            Divider()
-                .frame(height: 22)
+            Menu {
+                Button(action: saveSession) {
+                    Label("Save Session...", systemImage: "square.and.arrow.down")
+                }
+                .disabled(document == nil)
 
-            TextField("Title", text: $practiceTitle)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 180)
-                .help("Practice title")
-
-            Divider()
-                .frame(height: 22)
-
-            ToolButton(tool: .select, selectedTool: $selectedTool)
-            ToolButton(tool: .highlight, selectedTool: $selectedTool)
-            ToolButton(tool: .underline, selectedTool: $selectedTool)
-            ToolButton(tool: .strikeout, selectedTool: $selectedTool)
-            ToolButton(tool: .erase, selectedTool: $selectedTool)
-
-            Divider()
-                .frame(height: 22)
-
-            StrictModeButton(isEnabled: isStrictModeEnabled, action: toggleStrictMode)
-
-            Divider()
-                .frame(height: 22)
-
-            Button(action: { isTimerRunning.toggle() }) {
-                Label(isTimerRunning ? "Pause" : "Start", systemImage: isTimerRunning ? "pause.fill" : "play.fill")
-            }
-            Button(action: {
-                elapsedSeconds = 0
-                isTimerRunning = false
-            }) {
-                Image(systemName: "arrow.counterclockwise")
-            }
-            .help("Reset timer")
-
-            Text(formattedTime)
-                .monospacedDigit()
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 72, alignment: .leading)
-
-            Spacer()
-
-            if let pdfURL {
-                Text(pdfURL.lastPathComponent)
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
+                Button(action: loadSession) {
+                    Label("Load Session...", systemImage: "square.and.arrow.up")
+                }
+            } label: {
+                Label("Session", systemImage: "archivebox")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(.bar)
+
+        ToolbarItem(placement: .automatic) {
+            MarkupToolGroup(selectedTool: $selectedTool)
+                .disabled(document == nil)
+        }
+
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed, placement: .automatic)
+        }
+
+        ToolbarItem(placement: .automatic) {
+            TimerControl(
+                formattedTime: formattedTime,
+                isRunning: isTimerRunning,
+                toggle: { isTimerRunning.toggle() },
+                reset: {
+                    elapsedSeconds = 0
+                    isTimerRunning = false
+                }
+            )
+        }
+
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed, placement: .automatic)
+        }
+
+        ToolbarItem(placement: .automatic) {
+            StrictModeButton(isEnabled: isStrictModeEnabled, action: toggleStrictMode)
+        }
     }
 
     private var formattedTime: String {
@@ -394,13 +391,67 @@ struct CreditView: View {
         .padding(.vertical, 4)
         .background(VisualEffectBackground(material: .hudWindow, blendingMode: .withinWindow))
         .overlay(
-            RoundedRectangle(cornerRadius: 5)
+            Capsule()
                 .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .clipShape(Capsule())
         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
-        .padding(8)
+        .padding(.leading, 12)
+        .padding(.bottom, 12)
         .allowsHitTesting(false)
+    }
+}
+
+struct WorkspaceHeader: View {
+    @Binding var title: String
+    let fileName: String
+    let pageCount: Int
+    let answeredCount: Int
+    let questionCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "doc.richtext")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(fileName)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                Text("\(pageCount) \(pageCount == 1 ? "page" : "pages")")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: 220, alignment: .leading)
+
+            Divider()
+                .frame(height: 24)
+
+            TextField("Practice title", text: $title)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(maxWidth: 280)
+                .help("Session title")
+
+            Spacer(minLength: 12)
+
+            Label("\(answeredCount) of \(questionCount)", systemImage: "checkmark.circle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(answeredCount == questionCount ? Color.green : Color.secondary)
+                .monospacedDigit()
+                .help("Answered questions")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(.bar)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 }
 
@@ -430,29 +481,53 @@ struct StrictModeButton: View {
 
     var body: some View {
         Button(action: action) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
-                    Image(systemName: isEnabled ? "lock.fill" : "lock.open")
-                        .foregroundStyle(isEnabled ? Color.red : Color.secondary)
-                    Text(isEnabled ? "Strict On" : "Strict Off")
-                        .foregroundStyle(Color.primary)
-                }
+            HStack(spacing: 7) {
+                Image(systemName: isEnabled ? "lock.shield.fill" : "lock.shield")
+                    .foregroundStyle(isEnabled ? Color.orange : Color.secondary)
+                    .frame(width: 18, height: 18)
 
-                Image(systemName: isEnabled ? "lock.fill" : "lock.open")
-                    .foregroundStyle(isEnabled ? Color.red : Color.secondary)
+                Text(isEnabled ? "Strict On" : "Strict")
+                    .foregroundStyle(Color.primary)
             }
             .font(.system(size: 12, weight: .semibold))
-            .frame(height: 24)
-            .padding(.horizontal, 8)
-            .background(isEnabled ? Color.red.opacity(0.12) : Color(nsColor: .controlBackgroundColor))
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .stroke(isEnabled ? Color.red.opacity(0.45) : Color.secondary.opacity(0.25), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .fixedSize()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .help("Strict mode: full screen, refocus app, confirm before exit")
+    }
+}
+
+struct TimerControl: View {
+    let formattedTime: String
+    let isRunning: Bool
+    let toggle: () -> Void
+    let reset: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: toggle) {
+                Image(systemName: isRunning ? "pause.fill" : "play.fill")
+                    .frame(width: 22, height: 22)
+            }
+            .help(isRunning ? "Pause timer" : "Start timer")
+
+            Text(formattedTime)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .frame(width: 52)
+
+            Button(action: reset) {
+                Image(systemName: "arrow.counterclockwise")
+                    .frame(width: 22, height: 22)
+            }
+            .disabled(formattedTime == "00:00")
+            .help("Reset timer")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .fixedSize()
     }
 }
 
@@ -462,13 +537,29 @@ final class StrictModeController: NSObject, NSWindowDelegate {
     private weak var window: NSWindow?
     private var isEnabled = false
     private var focusTimer: Timer?
+    private var fullScreenObserver: NSObjectProtocol?
+    private var pendingFocusWorkItems: [DispatchWorkItem] = []
+    private var isEnteringFullScreen = false
     private var isConfirmingExit = false
 
     func attach(_ window: NSWindow) {
-        self.window = window
+        if self.window !== window {
+            if let fullScreenObserver {
+                NotificationCenter.default.removeObserver(fullScreenObserver)
+            }
+            self.window = window
+            fullScreenObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didEnterFullScreenNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                self?.isEnteringFullScreen = false
+                self?.scheduleFocusRecovery()
+            }
+        }
         window.delegate = self
         if isEnabled {
-            enterStrictMode()
+            startFocusEnforcement()
         }
     }
 
@@ -485,10 +576,8 @@ final class StrictModeController: NSObject, NSWindowDelegate {
     }
 
     func refocusIfNeeded() {
-        guard isEnabled else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            self.refocus()
-        }
+        guard isEnabled, !isConfirmingExit else { return }
+        scheduleFocusRecovery()
     }
 
     func applicationShouldTerminate() -> NSApplication.TerminateReply {
@@ -510,29 +599,62 @@ final class StrictModeController: NSObject, NSWindowDelegate {
     private func enterStrictMode() {
         guard let window else { return }
         window.collectionBehavior.insert(.fullScreenPrimary)
-        if !window.styleMask.contains(.fullScreen) {
+        startFocusEnforcement()
+        refocus()
+        if !window.styleMask.contains(.fullScreen), !isEnteringFullScreen {
+            isEnteringFullScreen = true
             window.toggleFullScreen(nil)
         }
-        refocus()
-        focusTimer?.invalidate()
-        focusTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.refocus()
-        }
+        scheduleFocusRecovery()
     }
 
     private func leaveStrictMode() {
         focusTimer?.invalidate()
         focusTimer = nil
+        pendingFocusWorkItems.forEach { $0.cancel() }
+        pendingFocusWorkItems.removeAll()
+        isEnteringFullScreen = false
         if let window, window.styleMask.contains(.fullScreen) {
             window.toggleFullScreen(nil)
         }
     }
 
+    private func startFocusEnforcement() {
+        guard focusTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.7, repeats: true) { [weak self] _ in
+            self?.refocus()
+        }
+        focusTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func scheduleFocusRecovery() {
+        pendingFocusWorkItems.forEach { $0.cancel() }
+        pendingFocusWorkItems.removeAll()
+
+        for delay in [0.05, 0.25, 0.7, 1.2] {
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.refocus()
+            }
+            pendingFocusWorkItems.append(workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        }
+    }
+
     private func refocus() {
-        guard isEnabled, let window else { return }
+        guard isEnabled,
+              !isConfirmingExit,
+              NSApp.modalWindow == nil,
+              let window
+        else { return }
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        if !NSApp.isActive {
+            NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        }
+        if !window.isKeyWindow {
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func confirmStrictModeExit(title: String, message: String) -> Bool {
@@ -551,25 +673,44 @@ final class StrictModeController: NSObject, NSWindowDelegate {
 
 struct EmptyStateView: View {
     let importAction: () -> Void
+    let loadAction: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 56))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 72, height: 72)
+                .background(Color.accentColor.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             Text("Import an IELTS reading PDF")
-                .font(.title2)
-            Button(action: importAction) {
-                Label("Choose PDF", systemImage: "folder")
+                .font(.system(size: 23, weight: .semibold))
+            Text("Open a practice file or continue a saved session.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Button(action: importAction) {
+                    Label("Choose PDF", systemImage: "folder")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: loadAction) {
+                    Label("Load Session", systemImage: "archivebox")
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 }
 
 struct PDFPane: View {
     let title: String
+    let systemImage: String
     let document: PDFDocument
     @Binding var startPage: Int
     @Binding var endPage: Int
@@ -577,9 +718,9 @@ struct PDFPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(title)
-                    .font(.headline)
+            HStack(spacing: 8) {
+                Label(title, systemImage: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 PageRangeFields(
                     startPage: $startPage,
@@ -588,8 +729,11 @@ struct PDFPane: View {
                 )
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .frame(height: 40)
+            .background(.bar)
+            .overlay(alignment: .bottom) {
+                Divider()
+            }
 
             PDFKitView(document: document, startPage: startPage, endPage: endPage, selectedTool: selectedTool)
         }
@@ -616,26 +760,30 @@ struct PageRangeFields: View {
     @FocusState private var focusedField: PageField?
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text("From")
-                .foregroundStyle(.secondary)
+        HStack(spacing: 5) {
             TextField("1", text: $startDraft)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 54)
+                .textFieldStyle(.plain)
+                .frame(width: 34, height: 22)
                 .multilineTextAlignment(.center)
                 .focused($focusedField, equals: .start)
                 .onSubmit(commitDrafts)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .accessibilityLabel("First \(titleForAccessibility) page")
 
             Text("to")
                 .foregroundStyle(.secondary)
             TextField("\(pageCount)", text: $endDraft)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 54)
+                .textFieldStyle(.plain)
+                .frame(width: 34, height: 22)
                 .multilineTextAlignment(.center)
                 .focused($focusedField, equals: .end)
                 .onSubmit(commitDrafts)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .accessibilityLabel("Last \(titleForAccessibility) page")
 
-            Text("/ \(pageCount)")
+            Text("of \(pageCount)")
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
@@ -678,6 +826,8 @@ struct PageRangeFields: View {
         startDraft = "\(startPage)"
         endDraft = "\(endPage)"
     }
+
+    private var titleForAccessibility: String { "PDF" }
 
     private enum PageField {
         case start
@@ -819,6 +969,35 @@ struct PDFKitView: NSViewRepresentable {
 }
 
 final class PracticePDFView: PDFView {
+    override func isAccessibilityElement() -> Bool {
+        if #available(macOS 26.0, *) {
+            return true
+        }
+        return super.isAccessibilityElement()
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        if #available(macOS 26.0, *) {
+            return .group
+        }
+        return super.accessibilityRole()
+    }
+
+    override func accessibilityLabel() -> String? {
+        if #available(macOS 26.0, *) {
+            return "PDF document"
+        }
+        return super.accessibilityLabel()
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        if #available(macOS 26.0, *) {
+            // PDFKit 1451 can recursively lock while building tagged-page AX nodes.
+            return []
+        }
+        return super.accessibilityChildren()
+    }
+
     override func mouseDown(with event: NSEvent) {
         ActivePDFViewStore.current = self
         super.mouseDown(with: event)
@@ -916,26 +1095,68 @@ enum MarkupTool: String, CaseIterable {
     }
 }
 
-struct ToolButton: View {
-    let tool: MarkupTool
+struct MarkupToolGroup: View {
     @Binding var selectedTool: MarkupTool
 
     var body: some View {
-        Button(action: useTool) {
-            Image(systemName: tool.icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(selectedTool == tool ? Color.accentColor : Color.primary)
-                .frame(width: 28, height: 24)
-                .background(selectedTool == tool ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(selectedTool == tool ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.22), lineWidth: 1)
+        toolRow
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .offset(y: 2)
+        .fixedSize()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("PDF markup tools")
+    }
+
+    private var toolRow: some View {
+        HStack(alignment: .center, spacing: 4) {
+            ForEach(MarkupTool.allCases, id: \.rawValue) { tool in
+                ToolButton(
+                    tool: tool,
+                    selectedTool: $selectedTool
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+    }
+}
+
+struct ToolButton: View {
+    let tool: MarkupTool
+    @Binding var selectedTool: MarkupTool
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: useTool) {
+            ZStack(alignment: .center) {
+                Circle()
+                    .fill(indicatorColor)
+                    .frame(width: 30, height: 30)
+
+                Image(systemName: tool.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.black.opacity(0.82) : Color.primary)
+                    .frame(width: 20, height: 20, alignment: .center)
+            }
+            .frame(width: 32, height: 32, alignment: .center)
+            .contentShape(Circle())
+            .animation(.easeOut(duration: 0.12), value: isSelected)
+            .animation(.easeOut(duration: 0.1), value: isHovered)
         }
         .buttonStyle(.plain)
-        .frame(width: 30, height: 26)
+        .frame(width: 32, height: 32, alignment: .center)
+        .onHover { isHovered = $0 }
         .help(tool.label)
+    }
+
+    private var isSelected: Bool {
+        selectedTool == tool
+    }
+
+    private var indicatorColor: Color {
+        if isSelected {
+            return .white
+        }
+        return isHovered ? Color.primary.opacity(0.12) : .clear
     }
 
     private func useTool() {
@@ -958,33 +1179,52 @@ struct AnswerPanel: View {
     @Binding var answers: [AnswerRow]
     @Environment(\.practiceTitle) private var practiceTitle
     @State private var showsCopyToast = false
+    @State private var imagePreview: AnswerImagePreview?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
-                HStack {
-                    Text("Answers")
-                        .font(.headline)
+                HStack(spacing: 8) {
+                    Label("Answers", systemImage: "checklist")
+                        .font(.system(size: 13, weight: .semibold))
+
+                    Text("\(completedCount)/\(answers.count)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+
                     Spacer()
+
                     Button(action: copyText) {
                         Image(systemName: "doc.on.clipboard")
+                            .frame(width: 20, height: 20)
                     }
+                    .buttonStyle(.borderless)
                     .help("Copy answers as text")
-                    Button(action: exportImage) {
-                        Image(systemName: "photo")
+
+                    Button(action: showImagePreview) {
+                        Image(systemName: "photo.badge.arrow.down")
+                            .frame(width: 20, height: 20)
                     }
+                    .buttonStyle(.borderless)
                     .help("Export answers as image")
+
                     Button(action: addRow) {
                         Image(systemName: "plus")
+                            .frame(width: 20, height: 20)
                     }
+                    .buttonStyle(.borderless)
                     .help("Add question")
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .frame(height: 40)
+                .background(.bar)
+                .overlay(alignment: .bottom) {
+                    Divider()
+                }
 
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: 0) {
                         ForEach(answers.indices, id: \.self) { index in
                             AnswerRowView(
                                 answer: $answers[index],
@@ -992,10 +1232,15 @@ struct AnswerPanel: View {
                                     renumber(from: index, firstNumber: newNumber)
                                 }
                             )
+
+                            if index < answers.count - 1 {
+                                Divider()
+                                    .padding(.leading, 12)
+                            }
                         }
                     }
-                    .padding(12)
                 }
+                .background(Color(nsColor: .textBackgroundColor))
             }
 
             if showsCopyToast {
@@ -1009,9 +1254,20 @@ struct AnswerPanel: View {
                     .shadow(color: Color.black.opacity(0.14), radius: 8, x: 0, y: 3)
                     .padding(.top, 48)
                     .padding(.trailing, 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .sheet(item: $imagePreview) { preview in
+            AnswerImagePreviewSheet(title: preview.title, image: preview.image) {
+                DispatchQueue.main.async {
+                    saveImage(preview.image, title: preview.title)
+                }
+            }
+        }
+    }
+
+    private var completedCount: Int {
+        answers.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
     }
 
     private func addRow() {
@@ -1041,13 +1297,21 @@ struct AnswerPanel: View {
         }
     }
 
-    private func exportImage() {
+    private func showImagePreview() {
+        guard let image = AnswerImageRenderer.image(title: practiceTitle, answers: answers) else {
+            showExportAlert(ExportError.couldNotCreatePNG)
+            return
+        }
+        imagePreview = AnswerImagePreview(title: practiceTitle, image: image)
+    }
+
+    private func saveImage(_ image: NSImage, title: String) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "\(practiceTitle.safeFilename)-answers.png"
+        panel.nameFieldStringValue = "\(title.safeFilename)-answers.png"
         if panel.runModal() == .OK, let url = panel.url {
             do {
-                guard let data = AnswerImageRenderer.pngData(title: practiceTitle, answers: answers) else {
+                guard let data = image.pngData else {
                     throw ExportError.couldNotCreatePNG
                 }
                 try data.write(to: url, options: .atomic)
@@ -1066,6 +1330,71 @@ struct AnswerPanel: View {
     }
 }
 
+private struct AnswerImagePreview: Identifiable {
+    let id = UUID()
+    let title: String
+    let image: NSImage
+}
+
+private struct AnswerImagePreviewSheet: View {
+    let title: String
+    let image: NSImage
+    let saveAction: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private var previewSize: CGSize {
+        let maximumWidth: CGFloat = 860
+        let scale = min(maximumWidth / max(image.size.width, 1), 1)
+        return CGSize(width: image.size.width * scale, height: image.size.height * scale)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Export Preview")
+                        .font(.headline)
+                    Text(title.isEmpty ? "IELTS Answers" : title)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+
+            Divider()
+
+            ScrollView([.horizontal, .vertical]) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: previewSize.width, height: previewSize.height)
+                    .padding(24)
+            }
+            .background(Color(nsColor: .underPageBackgroundColor))
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                Button("Save PNG...") {
+                    dismiss()
+                    saveAction()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+        }
+        .frame(minWidth: 640, idealWidth: 760, minHeight: 480)
+    }
+}
+
 struct AnswerRowView: View {
     @Binding var answer: AnswerRow
     let numberChanged: (Int) -> Void
@@ -1073,18 +1402,20 @@ struct AnswerRowView: View {
     @FocusState private var isNumberFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
                 TextField("", text: $numberDraft)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
                     .multilineTextAlignment(.center)
                     .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 28, height: 24)
+                    .frame(width: 30, height: 24)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
                     .focused($isNumberFocused)
                     .onSubmit(commitNumber)
                     .help("Edit question number")
 
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     ForEach(AnswerKind.allCases) { kind in
                         Button {
                             if answer.kind != kind {
@@ -1093,36 +1424,40 @@ struct AnswerRowView: View {
                             }
                         } label: {
                             Text(kind.shortLabel)
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(width: 54, height: 22)
+                                .font(.system(size: 10, weight: .semibold))
+                                .frame(width: kind == .choice ? 58 : 44, height: 22)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(answer.kind == kind ? Color.white : Color.primary)
-                        .background(answer.kind == kind ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5)
-                                .stroke(answer.kind == kind ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: 1)
-                        )
+                        .foregroundStyle(answer.kind == kind ? Color.white : Color.secondary)
+                        .background(answer.kind == kind ? Color.accentColor : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .help(kind.label)
                     }
                 }
+                .padding(2)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
 
                 Spacer()
 
-                Toggle(isOn: $answer.isFlagged) {
+                Button {
+                    answer.isFlagged.toggle()
+                } label: {
                     Image(systemName: answer.isFlagged ? "flag.fill" : "flag")
+                        .foregroundStyle(answer.isFlagged ? Color.orange : Color.secondary)
+                        .frame(width: 24, height: 22)
                 }
-                .toggleStyle(.button)
-                .labelsHidden()
+                .buttonStyle(.plain)
+                .background(answer.isFlagged ? Color.orange.opacity(0.12) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
                 .help("Mark for review")
             }
 
             answerInput
         }
-        .padding(9)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(answer.isFlagged ? Color.orange.opacity(0.045) : Color.clear)
         .onAppear(perform: syncNumberDraft)
         .onChange(of: isNumberFocused) { focused in
             if !focused {
@@ -1142,6 +1477,7 @@ struct AnswerRowView: View {
         case .text:
             TextField("Type answer", text: $answer.value)
                 .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
         case .choice:
             Picker("Choice", selection: $answer.value) {
                 ForEach(["", "A", "B", "C", "D", "E", "F"], id: \.self) { option in
@@ -1149,6 +1485,7 @@ struct AnswerRowView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .controlSize(.small)
         case .tfng:
             Picker("TFNG", selection: $answer.value) {
                 ForEach(["", "True", "False", "Not Given"], id: \.self) { option in
@@ -1156,6 +1493,7 @@ struct AnswerRowView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .controlSize(.small)
         }
     }
 
@@ -1232,7 +1570,7 @@ struct AnswerImageRenderer {
     private static let faintInkColor = NSColor(calibratedWhite: 0.74, alpha: 1)
     private static let ruleColor = NSColor(calibratedWhite: 0.88, alpha: 1)
 
-    static func pngData(title: String, answers: [AnswerRow]) -> Data? {
+    static func image(title: String, answers: [AnswerRow]) -> NSImage? {
         let rowHeight: CGFloat = 32
         let headerHeight: CGFloat = 44
         let footerHeight: CGFloat = 28
@@ -1281,13 +1619,7 @@ struct AnswerImageRenderer {
         drawText("IELTSReader · 2026 · Merak", in: CGRect(x: 24, y: 12, width: width - 48, height: 16), font: .systemFont(ofSize: 10), color: faintInkColor)
 
         guard let cgImage = context.makeImage() else { return nil }
-        let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
-            return nil
-        }
-        CGImageDestinationAddImage(destination, cgImage, nil)
-        guard CGImageDestinationFinalize(destination) else { return nil }
-        return data as Data
+        return NSImage(cgImage: cgImage, size: pixelSize)
     }
 
     private static func drawText(_ text: String, in rect: CGRect, font: NSFont, color: NSColor = inkColor) {

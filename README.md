@@ -1,4 +1,4 @@
-# IELTSReader 1.0
+# IELTSReader 1.5.0
 
 IELTSReader 是一个为雅思机考阅读练习设计的原生 macOS 应用。它可以把 PDF 练习材料整理成更接近真实机考的阅读环境：左侧显示文章，中间显示题目，右侧记录答案，适合用已有 PDF 材料做日常训练。
 
@@ -34,8 +34,8 @@ GitHub: https://github.com/MerakW/IELTSReader
 Release 会提供两个版本：
 
 ```text
-IELTSReader-1.0-Universal.app.zip
-IELTSReader-1.0-Apple-Silicon.app.zip
+IELTSReader-1.5.0-Universal.app.zip
+IELTSReader-1.5.0-Apple-Silicon.app.zip
 ```
 
 大多数用户推荐下载 `Universal` 版本；如果你确定只在 Apple Silicon / M 系列 Mac 上使用，也可以下载 `Apple-Silicon` 版本。
@@ -75,8 +75,8 @@ IELTSReader is a native macOS app for IELTS computer-based reading practice. It 
 To install, download:
 
 ```text
-IELTSReader-1.0-Universal.app.zip
-IELTSReader-1.0-Apple-Silicon.app.zip
+IELTSReader-1.5.0-Universal.app.zip
+IELTSReader-1.5.0-Apple-Silicon.app.zip
 ```
 
 Most users should download the `Universal` build. Use the `Apple-Silicon` build only if you are sure your Mac uses Apple Silicon.

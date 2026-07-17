@@ -38,6 +38,10 @@ fi
 
 cp -R "$ROOT_DIR/Resources/IELTSReader.icon" "$RESOURCES_DIR/IELTSReader.icon"
 xattr -cr "$APP_DIR"
+xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -d com.apple.FinderInfo "$RESOURCES_DIR/IELTSReader.icon" 2>/dev/null || true
+xattr -rd com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -rd com.apple.ResourceFork "$APP_DIR" 2>/dev/null || true
 codesign --force --sign - "$APP_DIR"
 
 echo "$APP_DIR"

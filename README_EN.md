@@ -1,10 +1,26 @@
-# IELTSReader
+# IELTSReader 1.5.0
 
 A native macOS reader for IELTS practice PDFs, designed to turn paper-style PDF material into a focused computer-based reading workspace.
 
 GitHub: https://github.com/MerakW/IELTSReader
 
 Download: https://github.com/MerakW/IELTSReader/releases/latest
+
+## Requirements
+
+- macOS 13.0 or later
+- Apple Silicon or Intel Mac
+
+## Download
+
+The latest release provides:
+
+```text
+IELTSReader-1.5.0-Universal.app.zip
+IELTSReader-1.5.0-Apple-Silicon.app.zip
+```
+
+The Universal build is recommended for most users.
 
 ## Features
 
@@ -16,7 +32,7 @@ Download: https://github.com/MerakW/IELTSReader/releases/latest
 - Text-selection based highlight, underline, strikeout, and cleanup
 - Timer and Strict Mode for focused practice
 - Save and load practice sessions
-- Export answers as text or image
+- Copy answers as text or preview and export them as an image
 
 ## Usage
 
